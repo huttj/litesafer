@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title></title>
+    <style>
+        img {
+            width: 50%;
+            height: auto;
+        }
+    </style>
+    <!-- (anonymous function) @ (index):24 favicon.ico:1 GET http://192.168.129.84:3000-->
+    <!--<script src="http://localhost:3000/socket.io/socket.io.js"></script>-->
+    <!--<script src="http://localhost:3000/socket.io/socket.io.js"></script>-->
+    <script src="/socket.io/socket.io.js"></script>
+    <!--<script src="http://:3000/resemble.js"></script>-->
+    <script src="/resemble.js"></script>
+</head>
+<body>
+
+    <button>Train</button>
+    <br/>
+    <img src="" alt=""/>
+    <br/>
+    <video width="100" height="100"></video>
+    <br/>
+    <canvas></canvas>
+
+
+<script>
+    resemble.outputSettings({
+        transparency: 0.3,
+        errorType: 'movementDifferenceIntensity'
+//        errorType: 'flat'
+    });
+
+    navigator.getUserMedia = navigator.getUserMedia ||
+            navigator.webkitGetUserMedia ||
+            navigator.mozGetUserMedia;
+
+    var canvas  = document.querySelector('canvas');
+    var context = canvas.getContext('2d');
+    var video   = document.querySelector('video');
+    var button  = document.querySelector('button');
+    var img     = document.querySelector('img');
+
+    var width  = 0;
+    var height = 0;
+    var socket = io.connect('localhost:3000');
+    var lastImage, savedImage;
+    var isComparing = false;
+
+    var isFlashing = false;
+    var lastRequest = +new Date();
+
+    button.addEventListener('click', train);
+
+    if (navigator.getUserMedia) {
+        navigator.getUserMedia({ audio: false, video: true },
+                gotUserMedia,
+                function(err) {
+                    console.log("The following error occured: " + err.name);
+                }
+        );
+    } else {
+        alert("getUserMedia not supported");
+    }
+
+    function gotUserMedia (stream) {
+        video.src = window.URL.createObjectURL(stream);
+        video.onloadedmetadata = function(e) {
+            video.play();
+            height = video.offsetHeight;
+            width  = video.offsetWidth;
+            takepicture();
+        };
+
+        console.log(stream);
+    }
+
+    function takepicture() {
+
+        if (width && height) {
+            canvas.width  = width;
+            canvas.height = height;
+            context.drawImage(video, 0, 0, width, height);
+
+            //var data = canvas.toDataURL('image/png');
+            var data = context.getImageData(0, 0, width, height);
+//            console.log(data);
+
+//            socket.emit('photo', data);
+            lastImage = data;
+        }
+        requestAnimationFrame(takepicture);
+    }
+
+    function train() {
+        savedImage = lastImage;
+        compare();
+    }
+
+
+
+    function compare() {
+        //console.log(isComparing, savedImage, img);
+        if (isComparing || !savedImage || savedImage === lastImage) {
+            return setTimeout(compare, 1000);
+        }
+
+        isComparing = true;
+
+        resemble(savedImage)
+                .compareTo(lastImage)
+                .ignoreAntialiasing()
+                .onComplete(loadComparison);
+
+        function loadComparison(data) {
+            //console.log(data);
+            var src = data.getImageDataUrl();
+//            console.log(data);
+
+            img.src = src;
+
+//            var percent = Math.round(9 - (Number(data.misMatchPercentage) / 5));
+            var percent = Number(data.misMatchPercentage);
+            var turnOn = percent > 5 ? 2 : -1;
+
+            console.log(percent);
+
+            //console.log(isFlashing, percent);
+
+            if (+new Date() - lastRequest > 100) {
+                lastRequest = +new Date();
+                get('http://hirekris.com:3333/light/' + turnOn);
+            }
+
+            /*
+             {
+             misMatchPercentage : 100, // %
+             isSameDimensions: true, // or false
+             dimensionDifference: { width: 0, height: -1 }, // defined if dimensions are not the same
+             getImageDataUrl: function(){}
+             }
+             */
+            //train();
+            isComparing = false;
+            requestAnimationFrame(compare);
+        }
+    }
+
+
+   // setInterval(compare, 1000);
+
+
+    function get(url) {
+        var request = new XMLHttpRequest();
+        request.open('GET', url, true);
+
+        request.onload = function() {
+            if (request.status >= 200 && request.status < 400) {
+                // Success!
+                var data = JSON.parse(request.responseText);
+            } else {
+                // We reached our target server, but it returned an error
+
+            }
+        };
+
+        request.onerror = function() {
+            // There was a connection error of some sort
+        };
+
+        request.send();
+    }
+</script>
+
+
+</body>
+</html>
